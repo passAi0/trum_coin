@@ -34,8 +34,8 @@ def load_user(user_id):
 
 # Home Route
 @app.route('/')
-def home():
-    return render_template('index.html', user=current_user)
+def index():
+    return render_template('index.html')
 
 
 # Register Route
