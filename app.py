@@ -7,7 +7,7 @@ import os
 
 from models import db, User
 
-# Load environment variables
+# Load environment variables from .env
 load_dotenv()
 
 # App setup
@@ -17,6 +17,7 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URL')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['DEBUG'] = os.getenv('DEBUG', 'False') == 'True'  # Optional, control debug from .env
 
 # Initialize database
 db.init_app(app)
@@ -31,12 +32,10 @@ login_manager.init_app(app)
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-
 # Home Route
 @app.route('/')
 def index():
     return render_template('index.html')
-
 
 # Register Route
 @app.route('/register', methods=['GET', 'POST'])
@@ -58,7 +57,10 @@ def register():
             return redirect(url_for('register'))
 
         # Check if user exists
-        existing_user = User.query.filter((User.username == username) | (User.email == email)).first()
+        existing_user = User.query.filter(
+            (User.username == username) | (User.email == email)
+        ).first()
+
         if existing_user:
             flash('⚠️ Username or email already exists.', 'danger')
             return redirect(url_for('register'))
@@ -82,7 +84,6 @@ def register():
 
     return render_template('register.html')
 
-
 # Login Route
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -104,7 +105,6 @@ def login():
 
     return render_template('login.html')
 
-
 # Dashboard Route
 @app.route('/dashboard')
 @login_required
@@ -112,7 +112,6 @@ def dashboard():
     if current_user.role == 'admin':
         return render_template('admin_dashboard.html', user=current_user)
     return render_template('user_dashboard.html', user=current_user)
-
 
 # Logout Route
 @app.route('/logout')
@@ -122,9 +121,32 @@ def logout():
     flash('👋 Logged out successfully.', 'info')
     return redirect(url_for('login'))
 
+# Auto-create Admin (Bonus enhancement)
+def create_admin_user():
+    admin_email = os.getenv('ADMIN_EMAIL', 'admin@example.com')
+    admin_username = os.getenv('ADMIN_USERNAME', 'admin')
+    admin_password = os.getenv('ADMIN_PASSWORD', 'admin123')
+
+    admin = User.query.filter_by(role='admin').first()
+    if not admin:
+        new_admin = User(
+            first_name='Admin',
+            last_name='User',
+            username=admin_username,
+            email=admin_email,
+            password_hash=generate_password_hash(admin_password),
+            phone_number='0000000000',
+            gender='Other',
+            role='admin',
+            two_factor_enabled=False
+        )
+        db.session.add(new_admin)
+        db.session.commit()
+        print('✅ Default admin user created.')
 
 # Main entry
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
-    app.run(debug=True)
+        create_admin_user()  # Auto-create admin if none exists
+    app.run(host="0.0.0.0", port=int(os.getenv('PORT', 5000)), debug=app.config['DEBUG'])
