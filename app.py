@@ -4,6 +4,8 @@ from flask_login import LoginManager, login_user, logout_user, login_required, c
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 import os
+import re
+from sqlalchemy.exc import SQLAlchemyError
 
 from models import db, User
 
@@ -40,14 +42,13 @@ def create_default_admin():
     admin_username = os.getenv('ADMIN_USERNAME', 'admin')
     admin_password = os.getenv('ADMIN_PASSWORD', 'admin123')
 
-    # Check if any admin exists
     admin = User.query.filter_by(role='admin').first()
     if not admin:
         new_admin = User(
             first_name='Admin',
             last_name='User',
-            username=admin_username,
-            email=admin_email,
+            username=admin_username.lower(),
+            email=admin_email.lower(),
             password_hash=generate_password_hash(admin_password),
             phone_number='0000000000',
             gender='Other',
@@ -74,15 +75,24 @@ def register():
         data = request.form
         first_name = data.get('first_name')
         last_name = data.get('last_name')
-        username = data.get('username')
-        email = data.get('email')
+        username = data.get('username').lower()
+        email = data.get('email').lower()
         password = data.get('password')
         confirm_password = data.get('confirm_password')
         phone_number = data.get('phone_number')
         gender = data.get('gender')
 
+        # Basic Validations
         if password != confirm_password:
             flash('⚠️ Passwords do not match.', 'danger')
+            return redirect(url_for('register'))
+
+        if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+            flash('⚠️ Invalid email format.', 'danger')
+            return redirect(url_for('register'))
+
+        if len(password) < 6:
+            flash('⚠️ Password must be at least 6 characters.', 'danger')
             return redirect(url_for('register'))
 
         existing_user = User.query.filter(
@@ -92,21 +102,24 @@ def register():
             flash('⚠️ Username or email already exists.', 'danger')
             return redirect(url_for('register'))
 
-        new_user = User(
-            first_name=first_name,
-            last_name=last_name,
-            username=username,
-            email=email,
-            password_hash=generate_password_hash(password),
-            phone_number=phone_number,
-            gender=gender
-        )
-
-        db.session.add(new_user)
-        db.session.commit()
-
-        flash('✅ Account created successfully. Please login.', 'success')
-        return redirect(url_for('login'))
+        try:
+            new_user = User(
+                first_name=first_name,
+                last_name=last_name,
+                username=username,
+                email=email,
+                password_hash=generate_password_hash(password),
+                phone_number=phone_number,
+                gender=gender
+            )
+            db.session.add(new_user)
+            db.session.commit()
+            flash('✅ Account created successfully. Please login.', 'success')
+            return redirect(url_for('login'))
+        except SQLAlchemyError:
+            db.session.rollback()
+            flash('❌ An error occurred. Please try again.', 'danger')
+            return redirect(url_for('register'))
 
     return render_template('register.html')
 
@@ -115,7 +128,7 @@ def register():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username_or_email = request.form.get('username_or_email')
+        username_or_email = request.form.get('username_or_email').lower()
         password = request.form.get('password')
 
         user = User.query.filter(
@@ -127,7 +140,7 @@ def login():
             flash('✅ Logged in successfully.', 'success')
             return redirect(url_for('dashboard'))
         else:
-            flash('❌ Invalid credentials.', 'danger')
+            flash('❌ Invalid credentials. Please try again.', 'danger')
             return redirect(url_for('login'))
 
     return render_template('login.html')
@@ -152,6 +165,18 @@ def admin_dashboard():
     return render_template('admin_dashboard.html', user=current_user)
 
 
+# Admin View Users Route
+@app.route('/admin/users')
+@login_required
+def admin_view_users():
+    if current_user.role != 'admin':
+        flash('🚫 Access Denied. Admins only.', 'danger')
+        return redirect(url_for('dashboard'))
+
+    users = User.query.order_by(User.created_at.desc()).all()
+    return render_template('admin_users.html', users=users)
+
+
 # Logout Route
 @app.route('/logout')
 @login_required
@@ -166,5 +191,5 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
         create_default_admin()
+    print(f"🚀 Server running | Debug Mode: {app.config['DEBUG']} | Database: {os.getenv('DATABASE_URL')}")
     app.run(host="0.0.0.0", port=int(os.getenv('PORT', 5000)), debug=app.config['DEBUG'])
-
