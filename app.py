@@ -128,8 +128,13 @@ def register():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username_or_email = request.form.get('username_or_email').lower()
-        password = request.form.get('password')
+        username_or_email = request.form.get('username_or_email', '').lower()
+        password = request.form.get('password', '')
+
+        if not username_or_email or not password:
+            flash('⚠️ Both username/email and password are required.', 'danger')
+            return redirect(url_for('login'))
+
 
         user = User.query.filter(
             (User.username == username_or_email) | (User.email == username_or_email)
