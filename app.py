@@ -35,7 +35,7 @@ def load_user(user_id):
 # Home Route
 @app.route('/')
 def home():
-    return "🏠 Welcome to Trump Exchange Platform!"
+    return render_template('index.html', user=current_user)
 
 
 # Register Route
